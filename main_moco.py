@@ -9,6 +9,8 @@ import shutil
 import time
 import warnings
 
+from pathlib import Path
+
 import torch
 import torch.nn as nn
 import torch.nn.parallel
@@ -61,6 +63,7 @@ parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     dest='weight_decay')
 parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
+parser.add_argument('--output_dir', default="./output/20210719/train_debug", type=str, help='Path to save logs and checkpoints.')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('--world-size', default=-1, type=int,
@@ -107,8 +110,7 @@ parser.add_argument('--patch_size', default=16, type=int, help="""Size in pixels
         mixed precision training (--use_fp16 false) to avoid unstabilities.""")
 
 
-def main():
-    args = parser.parse_args()
+def main(args):
 
     if args.seed is not None:
         random.seed(args.seed)
@@ -286,7 +288,7 @@ def main_worker(gpu, ngpus_per_node, args):
                 'arch': args.arch,
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
-            }, is_best=False, filename='checkpoint_{:04d}.pth.tar'.format(epoch))
+            }, is_best=False, filename=os.path.join(args.output_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch)))
 
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
@@ -413,4 +415,7 @@ def accuracy(output, target, topk=(1,)):
 
 
 if __name__ == '__main__':
-    main()
+    args = parser.parse_args()
+    if args.output_dir:
+        Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    main(args)
