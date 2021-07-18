@@ -24,16 +24,18 @@ import torchvision.models as models
 
 import moco.loader
 import moco.builder
+import moco.vision_transformer as vits
 
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
 
+
 parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet50',
-                    choices=model_names,
+                    choices=model_names + ['vit_tiny', 'vit_small', 'vit_base'],
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet50)')
@@ -65,7 +67,7 @@ parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
 parser.add_argument('--rank', default=-1, type=int,
                     help='node rank for distributed training')
-parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
+parser.add_argument('--dist-url', default='tcp://localhost:10001', type=str,
                     help='url used to set up distributed training')
 parser.add_argument('--dist-backend', default='nccl', type=str,
                     help='distributed backend')
@@ -96,6 +98,13 @@ parser.add_argument('--aug-plus', action='store_true',
                     help='use moco v2 data augmentation')
 parser.add_argument('--cos', action='store_true',
                     help='use cosine lr schedule')
+
+# ViT parameters
+parser.add_argument('--patch_size', default=16, type=int, help="""Size in pixels
+        of input square patches - default 16 (for 16x16 patches). Using smaller
+        values leads to better performance but requires more memory. Applies only
+        for ViTs (vit_tiny, vit_small and vit_base). If <16, we recommend disabling
+        mixed precision training (--use_fp16 false) to avoid unstabilities.""")
 
 
 def main():
@@ -156,9 +165,14 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
     # create model
     print("=> creating model '{}'".format(args.arch))
-    model = moco.builder.MoCo(
-        models.__dict__[args.arch],
-        args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp)
+    if args.arch in vits.__dict__.keys(): # this will list the main components of file "vits"
+        model = moco.builder.MoCo(args,
+            vits.__dict__[args.arch],
+            args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp)
+    else:
+        model = moco.builder.MoCo(args,
+            models.__dict__[args.arch],
+            args.moco_dim, args.moco_k, args.moco_m, args.moco_t, args.mlp)
     print(model)
 
     if args.distributed:
@@ -393,7 +407,7 @@ def accuracy(output, target, topk=(1,)):
 
         res = []
         for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
