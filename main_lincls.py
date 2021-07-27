@@ -21,6 +21,8 @@ import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torchvision.models as models
 
+import moco.vision_transformer as vits
+
 model_names = sorted(name for name in models.__dict__
     if name.islower() and not name.startswith("__")
     and callable(models.__dict__[name]))
@@ -29,7 +31,7 @@ parser = argparse.ArgumentParser(description='PyTorch ImageNet Training')
 parser.add_argument('data', metavar='DIR',
                     help='path to dataset')
 parser.add_argument('-a', '--arch', metavar='ARCH', default='resnet50',
-                    choices=model_names,
+                    choices=model_names + ['vit_tiny', 'vit_small', 'vit_base'],
                     help='model architecture: ' +
                         ' | '.join(model_names) +
                         ' (default: resnet50)')
@@ -79,6 +81,13 @@ parser.add_argument('--multiprocessing-distributed', action='store_true',
 
 parser.add_argument('--pretrained', default='', type=str,
                     help='path to moco pretrained checkpoint')
+
+# ViT parameters
+parser.add_argument('--patch_size', default=16, type=int, help="""Size in pixels
+        of input square patches - default 16 (for 16x16 patches). Using smaller
+        values leads to better performance but requires more memory. Applies only
+        for ViTs (vit_tiny, vit_small and vit_base). If <16, we recommend disabling
+        mixed precision training (--use_fp16 false) to avoid unstabilities.""")
 
 best_acc1 = 0
 
@@ -142,7 +151,14 @@ def main_worker(gpu, ngpus_per_node, args):
                                 world_size=args.world_size, rank=args.rank)
     # create model
     print("=> creating model '{}'".format(args.arch))
-    model = models.__dict__[args.arch]()
+    if args.arch in vits.__dict__.keys(): # this will list the main components of file "vits"
+        model = vits.__dict__[args.arch](
+            patch_size=args.patch_size, drop_path_rate=0.1
+        )
+    else:
+        model = models.__dict__[args.arch]()
+
+    print(model)
 
     # freeze all layers but the last fc
     for name, param in model.named_parameters():
@@ -336,6 +352,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         # compute output
         output = model(images)
+        print(output.shape)
         loss = criterion(output, target)
 
         # measure accuracy and record loss
@@ -493,7 +510,7 @@ def accuracy(output, target, topk=(1,)):
 
         res = []
         for k in topk:
-            correct_k = correct[:k].view(-1).float().sum(0, keepdim=True)
+            correct_k = correct[:k].contiguous().view(-1).float().sum(0, keepdim=True)
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
