@@ -63,7 +63,7 @@ parser.add_argument('--wd', '--weight-decay', default=1e-4, type=float,
                     dest='weight_decay')
 parser.add_argument('-p', '--print-freq', default=10, type=int,
                     metavar='N', help='print frequency (default: 10)')
-parser.add_argument('--output_dir', default="./output/20210719/train_debug", type=str, help='Path to save logs and checkpoints.')
+parser.add_argument('--output_dir', default="", type=str, help='Path to save logs and checkpoints.')
 parser.add_argument('--resume', default='', type=str, metavar='PATH',
                     help='path to latest checkpoint (default: none)')
 parser.add_argument('--world-size', default=-1, type=int,
@@ -211,6 +211,7 @@ def main_worker(gpu, ngpus_per_node, args):
     optimizer = torch.optim.SGD(model.parameters(), args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
+    # adamw
 
     # optionally resume from a checkpoint
     if args.resume:
@@ -273,13 +274,14 @@ def main_worker(gpu, ngpus_per_node, args):
         train_dataset, batch_size=args.batch_size, shuffle=(train_sampler is None),
         num_workers=args.workers, pin_memory=True, sampler=train_sampler, drop_last=True)
 
+
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             train_sampler.set_epoch(epoch)
         adjust_learning_rate(optimizer, epoch, args)
 
         # train for one epoch
-        train(train_loader, model, criterion, optimizer, epoch, args)
+        log_stats = train(train_loader, model, criterion, optimizer, epoch, args)
 
         if not args.multiprocessing_distributed or (args.multiprocessing_distributed
                 and args.rank % ngpus_per_node == 0):
@@ -289,7 +291,8 @@ def main_worker(gpu, ngpus_per_node, args):
                 'state_dict': model.state_dict(),
                 'optimizer' : optimizer.state_dict(),
             }, is_best=False, filename=os.path.join(args.output_dir, 'checkpoint_{:04d}.pth.tar'.format(epoch)))
-
+            with (Path(args.output_dir) / "log.txt").open("a") as f:
+                f.write(json.dumps(log_stats) + "\n"
 
 def train(train_loader, model, criterion, optimizer, epoch, args):
     batch_time = AverageMeter('Time', ':6.3f')
@@ -336,7 +339,8 @@ def train(train_loader, model, criterion, optimizer, epoch, args):
 
         if i % args.print_freq == 0:
             progress.display(i)
-
+    
+    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
