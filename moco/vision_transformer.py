@@ -156,7 +156,19 @@ class VisionTransformer(nn.Module):
         self.norm = norm_layer(embed_dim)
 
         # Classifier head
-        self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+        # self.head = nn.Linear(embed_dim, num_classes) if num_classes > 0 else nn.Identity()
+
+        self.fcs = nn.Sequential(
+            nn.Linear(embed_dim, 2048),
+            nn.ReLU(),
+            nn.BatchNorm1d(197), # 197 is the number of patches
+                                 # output shape is [batch_size, 197, hidden_size]
+            nn.Linear(2048, 2048),
+            nn.ReLU(),
+            nn.BatchNorm1d(197),
+            
+            nn.Linear(2048, num_classes),
+        )
 
         trunc_normal_(self.pos_embed, std=.02)
         trunc_normal_(self.cls_token, std=.02)
@@ -212,7 +224,8 @@ class VisionTransformer(nn.Module):
             x = blk(x)
         x = self.norm(x)
         # add by runsen
-        x = self.head(x)
+        # x = self.head(x)
+        x = self.fcs(x)
         return x[:, 0]
 
     def get_last_selfattention(self, x):

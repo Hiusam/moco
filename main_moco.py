@@ -214,7 +214,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # adamw
     if args.arch in vits.__dict__.keys():
         print("use adamw.")
-        optimizer = torch.optim.AdamW(model.parameters())
+        optimizer = torch.optim.AdamW(model.parameters(), weight_decay=0.05)
     else:
         print("use sgd.")
         optimizer = torch.optim.SGD(model.parameters(), args.lr,
@@ -246,18 +246,34 @@ def main_worker(gpu, ngpus_per_node, args):
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
     if args.aug_plus:
-        # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
-        augmentation = [
-            transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
-            transforms.RandomApply([
-                transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
-            ], p=0.8),
-            transforms.RandomGrayscale(p=0.2),
-            transforms.RandomApply([moco.loader.GaussianBlur([.1, 2.])], p=0.5),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            normalize
-        ]
+        if not args.arch in vits.__dict__.keys():
+            print("Use MoCoV2 augmentation.") 
+            # MoCo v2's aug: similar to SimCLR https://arxiv.org/abs/2002.05709
+            augmentation = [
+                transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                transforms.RandomApply([
+                    transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)  # not strengthened
+                ], p=0.8),
+                transforms.RandomGrayscale(p=0.2),
+                transforms.RandomApply([moco.loader.GaussianBlur([.1, 2.])], p=0.5),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                normalize
+            ]
+        else:
+            # for vision transformer, same as DINO
+            print("Use dino augmentation.")
+            augmentation = [
+                transforms.RandomResizedCrop(224, scale=(0.2, 1.)),
+                transforms.RandomHorizontalFlip(p=0.5),            
+                transforms.RandomApply([
+                    transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)  # not strengthened
+                ], p=0.8),
+                transforms.RandomGrayscale(p=0.2),
+                transforms.RandomApply([moco.loader.GaussianBlur([.1, 2.])], p=0.5),
+                transforms.ToTensor(),
+                normalize
+            ]
     else:
         # MoCo v1's aug: the same as InstDisc https://arxiv.org/abs/1805.01978
         augmentation = [
